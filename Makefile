@@ -51,6 +51,7 @@ Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_flash_ex.c \
 Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_exti.c \
 Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_uart.c \
 Core/Src/main.c \
+Core/syscmd/cmd_cli.c \
 Core/uart/uart.c \
 Core/led/led.c \
 Core/Src/freertos.c \
@@ -65,7 +66,8 @@ Middlewares/Third_Party/FreeRTOS/Source/tasks.c \
 Middlewares/Third_Party/FreeRTOS/Source/timers.c \
 Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS/cmsis_os.c \
 Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c \
-Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM3/port.c 
+Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM3/port.c \
+Core/cmd_lib/lib/embedded_cli.c 
 
 # ASM sources
 ASM_SOURCES =  \
@@ -138,13 +140,17 @@ C_INCLUDES =  \
 -IMiddlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM3 \
 -IDrivers/CMSIS/Device/ST/STM32F1xx/Include \
 -IDrivers/CMSIS/Include \
--IDrivers/STM32F1xx_HAL_Driver/Inc/Legacy
+-IDrivers/STM32F1xx_HAL_Driver/Inc/Legacy \
+-ICore/syscmd \
+-ICore/cmd_lib/lib
 
 
 # compile gcc flags
 ASFLAGS = $(MCU) $(AS_DEFS) $(AS_INCLUDES) $(OPT) -Wall -fdata-sections -ffunction-sections
 
 CFLAGS += $(MCU) $(C_DEFS) $(C_INCLUDES) $(OPT) -Wall -fdata-sections -ffunction-sections
+
+CFLAGS += -Werror #将警告视为错误
 
 ifeq ($(DEBUG), 1)
 CFLAGS += -g -gdwarf-2

@@ -6,10 +6,12 @@
 
 #include "FreeRTOS.h"
 #include "task.h"
+#include "queue.h"
 
 #include "uart.h"
 #include "stm32f1xx_hal_uart.h"
 
+#include "cmd_cli.h"
 
 #define STM32_UART_TX_PIN   GPIO_PIN_9
 #define STM32_UART_RX_PIN   GPIO_PIN_10
@@ -61,6 +63,29 @@ int fputc(int ch, FILE *f)
 
 
 
+
+
+// 串口接收中断回调函数
+static uint8_t uart_rx_data = 0;
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+    if (huart->Instance == USART1)
+    {
+        /* 中断写队列 */
+        QueueHandle_t cmd_cli_queue_handle = cmd_cli_queue_get();
+        if (cmd_cli_queue_handle) 
+        {
+            (void)xQueueSendFromISR( cmd_cli_queue_handle, &uart_rx_data, NULL );
+        }
+
+        HAL_UART_Receive_IT(huart, &uart_rx_data, 1); /* 继续接收 */
+    }
+
+    return;
+}
+
+
+/* 可以不写这个函数，其他地方使能GPIO也一样 */
 void HAL_UART_MspInit(UART_HandleTypeDef *huart)
 {
     GPIO_InitTypeDef GPIO_InitStruct = {0};
@@ -79,6 +104,7 @@ void HAL_UART_MspInit(UART_HandleTypeDef *huart)
 
     return;
 }
+
 
 // 修改__uart_init_IT函数
 static void __uart_init_IT(unsigned int bound)
@@ -142,7 +168,6 @@ void USART1_IRQHandler(void)
 
 
 
-
 static void __stm32_uart_main(void* arg)
 {
 
@@ -160,7 +185,7 @@ static TaskHandle_t stm32_uart_TaskHandle;
 int uart_init(unsigned int bound)
 {
     __uart_init_IT(bound);
-    memset(stm32_uart_TaskHandle, 0x00, sizeof(TaskHandle_t));
+    stm32_uart_TaskHandle = NULL;
     xTaskCreate(__stm32_uart_main, UART_TASK_NAME, 256, (void*)NULL, 3, &stm32_uart_TaskHandle);
 
     return 0;
