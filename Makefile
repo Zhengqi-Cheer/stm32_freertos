@@ -15,6 +15,7 @@ BUILD_DIR := build
 
 include mk/config.mk
 include mk/common.mk
+include mk/platform.mk
 
 include Core/module.mk
 include Drivers/module.mk

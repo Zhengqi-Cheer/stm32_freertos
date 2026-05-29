@@ -9,6 +9,7 @@ OPT ?= -Og
 #######################################
 PREFIX ?= arm-none-eabi-
 GCC_PATH ?= $(ROOT)/toolchain/gcc-arm-none-eabi-5_4-2016q3/bin
+HOSTCC ?= gcc
 
 CC := $(GCC_PATH)/$(PREFIX)gcc
 AS := $(GCC_PATH)/$(PREFIX)gcc -x assembler-with-cpp
@@ -17,19 +18,6 @@ SZ := $(GCC_PATH)/$(PREFIX)size
 
 HEX := $(CP) -O ihex
 BIN := $(CP) -O binary -S
-
-#######################################
-# target cpu
-#######################################
-CPU := -mcpu=cortex-m3
-MCU := $(CPU) -mthumb $(FPU) $(FLOAT-ABI)
-
-#######################################
-# project-wide flags
-#######################################
-C_DEFS += \
--DSTM32F103xE \
--DUSE_HAL_DRIVER
 
 AS_DEFS +=
 

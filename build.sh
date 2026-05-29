@@ -14,12 +14,14 @@ Commands:
   clean       Remove build output
   rebuild     Clean and build firmware
   modules     Show module switches
+  partition   Generate partition config files
   help        Show this help
 
 Examples:
   ./build.sh
   ./build.sh rebuild
   ./build.sh modules
+  ./build.sh partition
   ./build.sh build ENABLE_CORE_LED=n
   MAKE_JOBS=4 ./build.sh
 EOF
@@ -45,6 +47,9 @@ case "${cmd}" in
         ;;
     modules)
         make list-modules "$@"
+        ;;
+    partition)
+        make partition "$@"
         ;;
     help|-h|--help)
         usage

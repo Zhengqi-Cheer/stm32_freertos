@@ -1,0 +1,47 @@
+# STM32F103xE example layout, assuming 512KB flash.
+# Only fixed entry addresses are written by hand. Other partition addresses are
+# calculated by tools/gen_partition.c from size and order.
+
+flash:
+  base: 0x08000000
+  size: 512K
+  erase_size: 2K
+
+fixed:
+  - name: stage0
+    type: stage0
+    address: 0x08000000
+    size: 16K
+
+auto_layout:
+  start_after: stage0
+  align: erase_size
+
+layout:
+  - name: partition_table_0
+    type: partition_table
+    size: 4K
+  - name: partition_table_1
+    type: partition_table
+    size: 4K
+  - name: bootctrl_0
+    type: boot_control
+    size: 4K
+  - name: bootctrl_1
+    type: boot_control
+    size: 4K
+  - name: boot_a
+    type: bootloader
+    size: 48K
+  - name: boot_b
+    type: bootloader
+    size: 48K
+  - name: app_a
+    type: app
+    size: 160K
+  - name: app_b
+    type: app
+    size: 160K
+  - name: config
+    type: config
+    size: 64K
