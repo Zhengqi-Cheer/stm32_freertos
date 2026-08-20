@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>STM32 启动架构</title>
+  <style>
+    :root {
+      --bg: #f4f2ec;
+      --paper: #fffdf8;
+      --text: #1c1b16;
+      --muted: #5c5a52;
+      --faint: #8a877c;
+      --line: #d9d4c6;
+      --accent: #1d4ed8;
+      --live-bg: #e8f0ff;
+      --live-bd: #1d4ed8;
+      --stub-bg: #eeeae0;
+      --stub-bd: #8a877c;
+      --gap-bg: #fffdf8;
+      --gap-bd: #c9c4b6;
+      --warn-bg: #fff6e0;
+      --warn-bd: #c9a227;
+      --info-bg: #e8f0ff;
+      --info-bd: #1d4ed8;
+      --ok: #157a3a;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font: 15px/1.55 "Source Han Sans SC", "Noto Sans SC", "PingFang SC",
+        "Microsoft YaHei", sans-serif;
+      color: var(--text);
+      background: var(--bg);
+    }
+
+    .wrap {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 32px 24px 64px;
+    }
+
+    h1 { font-size: 28px; margin: 0 0 8px; letter-spacing: -0.02em; }
+    h2 { font-size: 18px; margin: 0 0 8px; }
+    p { margin: 0; }
+    .lead { color: var(--muted); max-width: 72ch; }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin: 20px 0;
+    }
+    .stat {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      padding: 12px 14px;
+    }
+    .stat b { display: block; font-size: 22px; }
+    .stat span { color: var(--muted); font-size: 13px; }
+    .stat.ok b { color: var(--ok); }
+    .stat.warn b { color: #9a6b00; }
+
+    .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 16px; }
+    .tab {
+      border: 1px solid var(--line);
+      background: var(--paper);
+      color: var(--text);
+      padding: 6px 12px;
+      font: inherit;
+      cursor: pointer;
+    }
+    .tab[aria-selected="true"] {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    .note {
+      border: 1px solid var(--line);
+      padding: 12px 14px;
+      margin-bottom: 16px;
+      background: var(--paper);
+    }
+    .note.info { background: var(--info-bg); border-color: var(--info-bd); }
+    .note.warn { background: var(--warn-bg); border-color: var(--warn-bd); }
+    .note strong { display: block; margin-bottom: 4px; }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      color: var(--muted);
+      font-size: 13px;
+      margin-bottom: 10px;
+    }
+    .swatch {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      margin-right: 6px;
+      vertical-align: -1px;
+      border: 1px solid var(--gap-bd);
+      background: var(--gap-bg);
+    }
+    .swatch.live { border-color: var(--live-bd); background: var(--live-bg); border-width: 1.6px; }
+    .swatch.stub { border-color: var(--stub-bd); background: var(--stub-bg); }
+
+    .stage {
+      display: none;
+      grid-template-columns: minmax(0, 1fr) 340px;
+      gap: 28px;
+      align-items: start;
+    }
+    .stage.active { display: grid; }
+
+    .flow-svg { width: 100%; height: auto; display: block; }
+    .node-box { rx: 6; }
+    .node-live { fill: var(--live-bg); stroke: var(--live-bd); stroke-width: 1.6; }
+    .node-stub { fill: var(--stub-bg); stroke: var(--stub-bd); stroke-width: 1; }
+    .node-gap { fill: var(--gap-bg); stroke: var(--gap-bd); stroke-width: 1; }
+    .edge { stroke: #6b675c; stroke-width: 1.4; fill: none; }
+    .edge.back { stroke-dasharray: 5 4; stroke: #8a877c; }
+
+    .flash-card {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      padding: 14px;
+    }
+    .flash-card p { color: var(--faint); font-size: 12px; margin-bottom: 10px; }
+    .flash-svg { width: 100%; height: auto; display: block; }
+    .flash-live { fill: var(--live-bg); stroke: var(--live-bd); stroke-width: 1.6; }
+    .flash-stub { fill: var(--stub-bg); stroke: var(--stub-bd); }
+    .flash-gap { fill: var(--gap-bg); stroke: var(--gap-bd); }
+
+    hr { border: 0; border-top: 1px solid var(--line); margin: 28px 0; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--paper);
+      font-size: 14px;
+    }
+    th, td {
+      text-align: left;
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--line);
+    }
+    th { color: var(--muted); font-weight: 600; }
+    tr:nth-child(even) td { background: #f7f4ec; }
+    code {
+      font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      background: #eeeae0;
+      padding: 1px 5px;
+    }
+
+    .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .cols h3 { margin: 0 0 8px; font-size: 15px; }
+    .cols p + p { margin-top: 8px; }
+
+    .src { margin-top: 28px; color: var(--faint); font-size: 12px; }
+
+    @media (max-width: 860px) {
+      .stats, .stage.active, .cols { grid-template-columns: 1fr; }
+    }
+
+    @media print {
+      body { background: #fff; }
+      .tab { border-color: #111; }
+      .stage { display: grid !important; page-break-after: always; }
+      .tabs { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>STM32 启动架构</h1>
+    <p class="lead">
+      目标是 Reset → Stage0 → Boot A/B → App A/B → confirm。
+      现在实际能跑的是 Stage0 → Boot_A 串口 CLI → XMODEM 写 App_A → jump。
+    </p>
+
+    <div class="stats">
+      <div class="stat ok"><b>3 段</b><span>已独立出镜像</span></div>
+      <div class="stat warn"><b>A/B</b><span>策略源码未接入运行</span></div>
+      <div class="stat"><b>512KB</b><span>Flash 分区已锁死</span></div>
+    </div>
+
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" aria-selected="true" data-view="now">当前实现</button>
+      <button class="tab" role="tab" aria-selected="false" data-view="target">目标架构</button>
+      <button class="tab" role="tab" aria-selected="false" data-view="upgrade">A/B 升级回滚</button>
+    </div>
+
+    <section class="stage active" data-panel="now">
+      <div>
+        <div class="note info">
+          <strong>现在这条链能干什么</strong>
+          烧 combined.bin 后，Stage0 跳到 Boot_A。3 秒内按任意键进 CLI；超时且 App_A
+          向量有效则跳 App。load 擦 App_A 再用 XMODEM-CRC 收 app_a.bin。默认 CubeMX App
+          仍链在 0x08000000，不能从 Boot_A 跳过去。
+        </div>
+        <div class="legend">
+          <span><i class="swatch live"></i>已跑通</span>
+          <span><i class="swatch stub"></i>有代码未接线</span>
+          <span><i class="swatch"></i>还没做</span>
+          <span>虚线 = 回边（失败重试 / 回滚）</span>
+        </div>
+        <svg class="flow-svg" data-flow="now"></svg>
+      </div>
+      <aside class="flash-card">
+        <h2>Flash 布局</h2>
+        <p>从 0x08000000 往上堆。高度按体量示意，不是 1:1。当前页相关分区更亮。</p>
+        <svg class="flash-svg" data-flash="now"></svg>
+      </aside>
+    </section>
+
+    <section class="stage" data-panel="target">
+      <div>
+        <div class="note warn">
+          <strong>目标链还缺哪一截</strong>
+          Stage0 还没读 PartitionTable / BootControl，也不会在 Boot A/B 之间 3 次失败回滚。
+          Bootloader 没链 bootloader_main.c。AppServices（boot_api / confirm）整层不存在。
+        </div>
+        <div class="legend">
+          <span><i class="swatch live"></i>已跑通</span>
+          <span><i class="swatch stub"></i>有代码未接线</span>
+          <span><i class="swatch"></i>还没做</span>
+        </div>
+        <svg class="flow-svg" data-flow="target"></svg>
+      </div>
+      <aside class="flash-card">
+        <h2>Flash 布局</h2>
+        <p>目标架构下整张图都相关，分区全部点亮。</p>
+        <svg class="flash-svg" data-flash="target"></svg>
+      </aside>
+    </section>
+
+    <section class="stage" data-panel="upgrade">
+      <div>
+        <div class="note">
+          <strong>槽状态机</strong>
+          EMPTY / VALID / PENDING / CONFIRMED / BAD。新镜像写对侧槽后标 PENDING；
+          App 调 confirm 才转 CONFIRMED。连续 3 次没 confirm 就标 BAD，切回上一份 CONFIRMED。
+        </div>
+        <div class="legend">
+          <span><i class="swatch live"></i>已跑通</span>
+          <span><i class="swatch stub"></i>有代码未接线</span>
+          <span><i class="swatch"></i>还没做</span>
+          <span>虚线 = 回边（失败重试 / 回滚）</span>
+        </div>
+        <svg class="flow-svg" data-flow="upgrade"></svg>
+      </div>
+      <aside class="flash-card">
+        <h2>Flash 布局</h2>
+        <p>升级回滚只动 Boot A/B 与 App A/B，其余分区变淡。</p>
+        <svg class="flash-svg" data-flash="upgrade"></svg>
+      </aside>
+    </section>
+
+    <hr>
+
+    <h2>地址表</h2>
+    <p class="lead" style="margin-bottom:10px">
+      来源：<code>platform/stm32f103xe/inc/partition_config.h</code>
+      · 擦除粒度 2KB · 合计 512KB
+    </p>
+    <table>
+      <thead>
+        <tr><th>区</th><th>起始</th><th>结束</th><th>大小</th><th>角色</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Stage0</td><td>0x08000000</td><td>0x08003FFF</td><td>16KB</td><td>复位向量，永不覆盖</td></tr>
+        <tr><td>PartitionTable 0</td><td>0x08004000</td><td>0x08004FFF</td><td>4KB</td><td>分区表主份</td></tr>
+        <tr><td>PartitionTable 1</td><td>0x08005000</td><td>0x08005FFF</td><td>4KB</td><td>分区表备份</td></tr>
+        <tr><td>BootControl 0</td><td>0x08006000</td><td>0x08006FFF</td><td>4KB</td><td>槽状态 / 失败计数</td></tr>
+        <tr><td>BootControl 1</td><td>0x08007000</td><td>0x08007FFF</td><td>4KB</td><td>控制块备份</td></tr>
+        <tr><td>Bootloader A</td><td>0x08008000</td><td>0x08013FFF</td><td>48KB</td><td>当前串口 Boot</td></tr>
+        <tr><td>Bootloader B</td><td>0x08014000</td><td>0x0801FFFF</td><td>48KB</td><td>尚未构建</td></tr>
+        <tr><td>App A</td><td>0x08020000</td><td>0x08047FFF</td><td>160KB</td><td>XMODEM 目标</td></tr>
+        <tr><td>App B</td><td>0x08048000</td><td>0x0806FFFF</td><td>160KB</td><td>尚未构建</td></tr>
+        <tr><td>Config</td><td>0x08070000</td><td>0x0807FFFF</td><td>64KB</td><td>业务配置区</td></tr>
+      </tbody>
+    </table>
+
+    <h2 style="margin-top:28px">和代码的对应</h2>
+    <div class="cols">
+      <div>
+        <h3>已经在跑</h3>
+        <p>Stage0：<code>Boot/Stage0/Src/stage0_main.c</code> 只校验 Boot_A 的 MSP / Reset_Handler 后跳转。</p>
+        <p>Boot_A：CLI + XMODEM，入口 <code>bootloader_entry.c</code>，收包 <code>bootloader_xmodem.c</code>。</p>
+        <p>App_A 链接脚本：<code>platform/stm32f103xe/linker/app_a.ld</code>，用 <code>./build.sh app_a</code>。</p>
+      </div>
+      <div>
+        <h3>写了但没进这条链</h3>
+        <p>策略：<code>Boot/Common</code> 的 boot_control / boot_partition / boot_image。</p>
+        <p>A/B 主循环：<code>bootloader_main.c</code> 没有链进当前 Boot_A。</p>
+        <p>下一刀：把 <code>bootloader_main.c</code> 接到 Bootloader，让选 App 走 BootControl，而不是再加串口命令。</p>
+      </div>
+    </div>
+
+    <p class="src">单页离线文档 · 打开本文件即可查看，无需网络。打印时会依次输出三张流程图。</p>
+  </div>
+
+  <script>
+    const FLOWS = {
+      now: {
+        nodes: [
+          { id: "reset", title: "Reset", sub: "上电 / 复位", kind: "live" },
+          { id: "stage0", title: "Stage0", sub: "只查 Boot_A 向量表", kind: "live" },
+          { id: "hang", title: "死循环", sub: "Boot_A 向量无效", kind: "live" },
+          { id: "boot", title: "Bootloader A", sub: "USART1 115200 8N1", kind: "live" },
+          { id: "wait", title: "等 3 秒", sub: "任意键留下，超时则跳 App", kind: "live" },
+          { id: "cli", title: "串口 CLI", sub: "help / info / erase / load / jump", kind: "live" },
+          { id: "xmodem", title: "XMODEM-CRC", sub: "擦 App_A 后写入", kind: "live" },
+          { id: "app", title: "App A", sub: "必须用 app_a.bin", kind: "live" },
+          { id: "stay", title: "停在 Boot", sub: "App 向量无效", kind: "live" }
+        ],
+        edges: [
+          ["reset", "stage0"], ["stage0", "hang"], ["stage0", "boot"],
+          ["boot", "wait"], ["wait", "cli"], ["wait", "app"], ["wait", "stay"],
+          ["cli", "xmodem"], ["xmodem", "app"], ["cli", "app"]
+        ]
+      },
+      target: {
+        nodes: [
+          { id: "reset", title: "Reset", sub: "上电 / 复位", kind: "live" },
+          { id: "stage0", title: "Stage0", sub: "0x08000000 · 16KB", kind: "stub" },
+          { id: "pt", title: "PartitionTable 0/1", sub: "两份互备 · 各 4KB", kind: "gap" },
+          { id: "bc", title: "BootControl 0/1", sub: "当前槽 / 失败计数", kind: "gap" },
+          { id: "pickb", title: "选 Boot 槽", sub: "PENDING 优先，否则 CONFIRMED", kind: "gap" },
+          { id: "boota", title: "Bootloader A", sub: "0x08008000 · 48KB", kind: "live" },
+          { id: "bootb", title: "Bootloader B", sub: "0x08014000 · 48KB", kind: "gap" },
+          { id: "picka", title: "选 App 槽", sub: "同样 PENDING 优先", kind: "gap" },
+          { id: "appa", title: "App A", sub: "0x08020000 · 160KB", kind: "live" },
+          { id: "appb", title: "App B", sub: "0x08048000 · 160KB", kind: "gap" },
+          { id: "confirm", title: "boot_api_confirm", sub: "PENDING → CONFIRMED", kind: "gap" }
+        ],
+        edges: [
+          ["reset", "stage0"], ["stage0", "pt"], ["pt", "bc"], ["bc", "pickb"],
+          ["pickb", "boota"], ["pickb", "bootb"],
+          ["boota", "picka"], ["bootb", "picka"],
+          ["picka", "appa"], ["picka", "appb"],
+          ["appa", "confirm"], ["appb", "confirm"]
+        ]
+      },
+      upgrade: {
+        nodes: [
+          { id: "idle", title: "运行中", sub: "当前槽 CONFIRMED", kind: "stub" },
+          { id: "write", title: "写对侧槽", sub: "Boot 或 App 的空闲副本", kind: "gap" },
+          { id: "pending", title: "标 PENDING", sub: "写 BootControl，立刻复位", kind: "gap" },
+          { id: "try", title: "试跑新镜像", sub: "失败计数 +1", kind: "gap" },
+          { id: "ok", title: "confirm", sub: "PENDING → CONFIRMED", kind: "gap" },
+          { id: "fail", title: "启动失败", sub: "未 confirm 就复位", kind: "gap" },
+          { id: "retry", title: "再试", sub: "失败次数 < 3", kind: "gap" },
+          { id: "bad", title: "标 BAD", sub: "失败次数 ≥ 3", kind: "gap" },
+          { id: "roll", title: "回滚旧槽", sub: "回到上一份 CONFIRMED", kind: "gap" }
+        ],
+        edges: [
+          ["idle", "write"], ["write", "pending"], ["pending", "try"],
+          ["try", "ok"], ["try", "fail"], ["fail", "retry"], ["fail", "bad"],
+          ["retry", "try"], ["bad", "roll"], ["ok", "idle"], ["roll", "idle"]
+        ]
+      }
+    };
+
+    const FLASH_ROWS = [
+      { height: 42, cells: [{ id: "stage0", name: "Stage0", addr: "08000000", kb: 16, kind: "live" }] },
+      { height: 36, cells: [
+        { id: "pt0", name: "PT0", addr: "08004000", kb: 4, kind: "gap" },
+        { id: "pt1", name: "PT1", addr: "08005000", kb: 4, kind: "gap" }
+      ]},
+      { height: 36, cells: [
+        { id: "bc0", name: "BootCtrl0", addr: "08006000", kb: 4, kind: "gap" },
+        { id: "bc1", name: "BootCtrl1", addr: "08007000", kb: 4, kind: "gap" }
+      ]},
+      { height: 58, cells: [{ id: "boot_a", name: "Bootloader A", addr: "08008000", kb: 48, kind: "live" }] },
+      { height: 58, cells: [{ id: "boot_b", name: "Bootloader B", addr: "08014000", kb: 48, kind: "gap" }] },
+      { height: 118, cells: [{ id: "app_a", name: "App A", addr: "08020000", kb: 160, kind: "live" }] },
+      { height: 118, cells: [{ id: "app_b", name: "App B", addr: "08048000", kb: 160, kind: "gap" }] },
+      { height: 70, cells: [{ id: "config", name: "Config", addr: "08070000", kb: 64, kind: "gap" }] }
+    ];
+
+    const FOCUS = {
+      now: ["stage0", "boot_a", "app_a"],
+      target: FLASH_ROWS.flatMap(function (r) { return r.cells.map(function (c) { return c.id; }); }),
+      upgrade: ["boot_a", "boot_b", "app_a", "app_b"]
+    };
+
+    function layout(nodes, edges) {
+      var nodeW = 196, nodeH = 56, rankGap = 44, nodeGap = 24, pad = 12;
+      var outgoing = {}, incoming = {}, vis = {}, back = {};
+      nodes.forEach(function (n) { outgoing[n.id] = []; incoming[n.id] = []; });
+      edges.forEach(function (e) {
+        outgoing[e[0]].push(e[1]);
+        incoming[e[1]].push(e[0]);
+      });
+
+      function dfs(u) {
+        vis[u] = 1;
+        (outgoing[u] || []).forEach(function (v) {
+          if (vis[v] === 1) { back[u + ">" + v] = true; return; }
+          if (vis[v] === 2) return;
+          dfs(v);
+        });
+        vis[u] = 2;
+      }
+      nodes.forEach(function (n) { if (!vis[n.id]) dfs(n.id); });
+
+      var rank = {};
+      nodes.forEach(function (n) { rank[n.id] = 0; });
+      var changed = true, guard = 0;
+      while (changed && guard++ < 64) {
+        changed = false;
+        edges.forEach(function (e) {
+          if (back[e[0] + ">" + e[1]]) return;
+          var next = rank[e[0]] + 1;
+          if (next > rank[e[1]]) { rank[e[1]] = next; changed = true; }
+        });
+      }
+
+      var byRank = [];
+      nodes.forEach(function (n) {
+        var r = rank[n.id];
+        if (!byRank[r]) byRank[r] = [];
+        byRank[r].push(n);
+      });
+
+      var maxCols = 1;
+      byRank.forEach(function (row) { if (row && row.length > maxCols) maxCols = row.length; });
+      var width = pad * 2 + maxCols * nodeW + (maxCols - 1) * nodeGap;
+      var height = pad * 2 + byRank.length * nodeH + (byRank.length - 1) * rankGap;
+      var pos = {};
+      byRank.forEach(function (row, r) {
+        var rowW = row.length * nodeW + (row.length - 1) * nodeGap;
+        var x = (width - rowW) / 2;
+        row.forEach(function (n) {
+          pos[n.id] = { x: x, y: pad + r * (nodeH + rankGap), w: nodeW, h: nodeH };
+          x += nodeW + nodeGap;
+        });
+      });
+      return { width: width, height: height, pos: pos, back: back, nodeW: nodeW, nodeH: nodeH };
+    }
+
+    function escapeXml(s) {
+      return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    function drawFlow(svg, key) {
+      var flow = FLOWS[key];
+      var L = layout(flow.nodes, flow.edges);
+      var parts = ['<svg viewBox="0 0 ' + L.width + ' ' + L.height + '" class="flow-svg">'];
+      flow.edges.forEach(function (e) {
+        var a = L.pos[e[0]], b = L.pos[e[1]];
+        var isBack = !!L.back[e[0] + ">" + e[1]];
+        var x1 = a.x + a.w / 2, y1 = isBack ? a.y : a.y + a.h;
+        var x2 = b.x + b.w / 2, y2 = isBack ? b.y + b.h : b.y;
+        parts.push(
+          '<line class="edge' + (isBack ? " back" : "") +
+          '" x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '"></line>'
+        );
+      });
+      flow.nodes.forEach(function (n) {
+        var p = L.pos[n.id];
+        parts.push(
+          '<rect class="node-box node-' + n.kind + '" x="' + p.x + '" y="' + p.y +
+          '" width="' + L.nodeW + '" height="' + L.nodeH + '"></rect>' +
+          '<text x="' + (p.x + 12) + '" y="' + (p.y + 22) +
+          '" fill="#1c1b16" font-size="13" font-weight="600">' + escapeXml(n.title) + '</text>' +
+          '<text x="' + (p.x + 12) + '" y="' + (p.y + 42) +
+          '" fill="#5c5a52" font-size="11">' + escapeXml(n.sub) + '</text>'
+        );
+      });
+      parts.push("</svg>");
+      svg.outerHTML = parts.join("");
+    }
+
+    function drawFlash(svg, key) {
+      var focus = {};
+      FOCUS[key].forEach(function (id) { focus[id] = true; });
+      var addrW = 78, barX = 86, barW = 200, top = 20, gap = 2;
+      var barH = FLASH_ROWS.reduce(function (s, r) { return s + r.height; }, 0) + gap * (FLASH_ROWS.length - 1);
+      var width = 340, height = top + barH + 28;
+      var y = top;
+      var parts = ['<svg viewBox="0 0 ' + width + ' ' + height + '" class="flash-svg">'];
+      parts.push('<text x="72" y="12" text-anchor="end" fill="#8a877c" font-size="10">低地址</text>');
+      FLASH_ROWS.forEach(function (row) {
+        parts.push(
+          '<text x="78" y="' + (y + 14) + '" text-anchor="end" fill="#5c5a52" font-size="10" font-family="ui-monospace, Menlo, Consolas, monospace">' +
+          row.cells[0].addr + "</text>"
+        );
+        row.cells.forEach(function (cell, i) {
+          var cw = barW / row.cells.length;
+          var cx = barX + i * cw;
+          var on = focus[cell.id] ? 1 : 0.38;
+          parts.push(
+            '<g opacity="' + on + '">' +
+            '<rect class="flash-' + cell.kind + '" x="' + cx + '" y="' + y +
+            '" width="' + (cw - (i < row.cells.length - 1 ? 2 : 0)) +
+            '" height="' + row.height + '" rx="4"></rect>' +
+            '<text x="' + (cx + 8) + '" y="' + (y + (row.height < 44 ? 16 : 22)) +
+            '" fill="#1c1b16" font-size="12" font-weight="600">' + escapeXml(cell.name) + "</text>" +
+            '<text x="' + (cx + 8) + '" y="' + (y + (row.height < 44 ? 30 : 40)) +
+            '" fill="#5c5a52" font-size="10">' + cell.kb + "KB</text></g>"
+          );
+        });
+        y += row.height + gap;
+      });
+      parts.push(
+        '<text x="78" y="' + (top + barH + 14) + '" text-anchor="end" fill="#5c5a52" font-size="10" font-family="ui-monospace, Menlo, Consolas, monospace">08080000</text>' +
+        '<text x="86" y="' + (top + barH + 14) + '" fill="#8a877c" font-size="10">高地址 · 512KB 填满</text></svg>'
+      );
+      svg.outerHTML = parts.join("");
+    }
+
+    document.querySelectorAll("[data-flow]").forEach(function (el) {
+      drawFlow(el, el.getAttribute("data-flow"));
+    });
+    document.querySelectorAll("[data-flash]").forEach(function (el) {
+      drawFlash(el, el.getAttribute("data-flash"));
+    });
+
+    var tabs = document.querySelectorAll(".tab");
+    var panels = document.querySelectorAll(".stage");
+    tabs.forEach(function (tab) {
+      tab.addEventListener("click", function () {
+        var view = tab.getAttribute("data-view");
+        tabs.forEach(function (t) { t.setAttribute("aria-selected", t === tab ? "true" : "false"); });
+        panels.forEach(function (p) {
+          p.classList.toggle("active", p.getAttribute("data-panel") === view);
+        });
+      });
+    });
+  </script>
+</body>
+</html>

@@ -20,7 +20,7 @@ App_B image
 当前实现中，PartitionTable 真实二进制还未生成和烧录，所以代码提供了 fallback：
 
 ```text
-generated/<platform>/partition_config.h
+platform/<platform>/inc/partition_config.h
         ↓
 g_fallback_partition_table
 ```
@@ -43,7 +43,7 @@ bootloader_main
   ├─ load active PartitionTable
   │    ├─ try PartitionTable_0
   │    ├─ try PartitionTable_1
-  │    └─ fallback to generated partition_config.h table
+  │    └─ fallback to partition_config.h table
   │
   ├─ load active BootControl
   │    ├─ try BootControl_0
@@ -429,5 +429,5 @@ Boot/Common/Inc/boot_image.h
 Boot/Common/Src/boot_image.c
 Boot/Common/Inc/boot_platform.h
 platform/stm32f103xe/src/boot_platform.c
-generated/stm32f103xe/partition_config.h
+platform/stm32f103xe/inc/partition_config.h
 ```

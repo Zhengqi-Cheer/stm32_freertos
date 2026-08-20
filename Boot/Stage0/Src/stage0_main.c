@@ -1,29 +1,65 @@
-#include "boot_control.h"
-#include "boot_image.h"
-#include "boot_partition.h"
+#include "partition_config.h"
+#include "platform_config.h"
+
+#include "stm32f1xx.h"
+
+#include <stdint.h>
 
 /*
- * Stage0 框架入口。
- *
- * 该文件暂不接入当前 App 的 Makefile。后续应为 Stage0 单独准备：
- * 1. 独立 linker script，固定 ORIGIN = 0x08000000。
- * 2. 极小启动文件和 SystemInit。
- * 3. 只编译 Boot/Common 中必要文件。
+ * Minimal Stage0: stay at the reset vector and jump to Bootloader_A.
+ * No UART, no HAL, no A/B selection yet.
  */
 
-int stage0_main(void)
+typedef void (*stage0_entry_t)(void);
+
+static int stage0_in_range(uint32_t value, uint32_t start, uint32_t end)
 {
-    /*
-     * TODO:
-     * 1. 从固定地址读取 PartitionTable_0/1。
-     * 2. boot_partition_select_active() 选择有效分区表。
-     * 3. 根据分区表找到 BootControl_0/1。
-     * 4. boot_control_select_active() 选择有效 BootControl。
-     * 5. boot_control_select_slot(&control->bootloader) 选择 Bootloader slot。
-     * 6. 校验镜像头和 CRC。
-     * 7. 写回 try_count。
-     * 8. boot_image_jump() 跳转 Bootloader。
-     * 9. 如果 A/B 都不可用，进入最小恢复模式。
-     */
-    return 0;
+    return (value >= start) && (value < end);
+}
+
+static int stage0_bootloader_is_valid(uint32_t vector_addr)
+{
+    const uint32_t sp = *(volatile uint32_t *)vector_addr;
+    const uint32_t reset = *(volatile uint32_t *)(vector_addr + 4u);
+    const uint32_t thumb_pc = reset & ~1u;
+    const uint32_t sram_end = PLATFORM_SRAM_BASE_ADDR + PLATFORM_SRAM_SIZE;
+
+    if (!stage0_in_range(sp, PLATFORM_SRAM_BASE_ADDR, sram_end + 1u)) {
+        return 0;
+    }
+
+    if ((reset & 1u) == 0u) {
+        return 0;
+    }
+
+    if (!stage0_in_range(thumb_pc, PARTITION_BOOT_A_ADDR, PARTITION_BOOT_A_END_ADDR)) {
+        return 0;
+    }
+
+    return 1;
+}
+
+static void stage0_jump(uint32_t vector_addr)
+{
+    const uint32_t sp = *(volatile uint32_t *)vector_addr;
+    const uint32_t reset = *(volatile uint32_t *)(vector_addr + 4u);
+    stage0_entry_t entry = (stage0_entry_t)reset;
+
+    SCB->VTOR = vector_addr;
+    __DSB();
+    __ISB();
+    __set_MSP(sp);
+    __DSB();
+    __ISB();
+    entry();
+}
+
+int main(void)
+{
+    if (stage0_bootloader_is_valid(PARTITION_BOOT_A_ADDR)) {
+        stage0_jump(PARTITION_BOOT_A_ADDR);
+    }
+
+    while (1) {
+    }
 }

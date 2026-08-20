@@ -6,7 +6,7 @@
 
 - 平台无关代码只处理格式、状态机和策略。
 - 芯片相关代码集中在 `platform/<platform_name>/`。
-- 分区地址由平台分区配置自动生成，不在业务代码里手写。
+- 分区地址由平台 C 头文件描述，不在业务代码里手写绝对地址。
 - App 通过服务接口访问配置、升级、Boot 状态，不直接操作硬件细节。
 
 ## 1. Target Directory Layout
@@ -61,11 +61,12 @@
 ├── platform/
 │   ├── stm32f103xe/
 │   │   ├── platform.mk
-│   │   ├── partition.yaml
 │   │   ├── inc/
-│   │   │   └── platform_config.h
+│   │   │   ├── platform_config.h
+│   │   │   └── partition_config.h
 │   │   ├── src/
 │   │   │   ├── boot_platform.c
+│   │   │   ├── partition_config.c
 │   │   │   ├── flash_driver.c
 │   │   │   ├── reset_jump.c
 │   │   │   └── platform_crc.c
@@ -76,26 +77,12 @@
 │   │
 │   └── <new_platform>/
 │       ├── platform.mk
-│       ├── partition.yaml
 │       ├── inc/
 │       ├── src/
 │       └── linker/
-│
-├── generated/
-│   └── <platform_name>/
-│       ├── partition_config.h
-│       ├── partition_layout.md
-│       ├── stage0.ld
-│       ├── boot_a.ld
-│       ├── boot_b.ld
-│       ├── app_a.ld
-│       └── app_b.ld
-│
-└── tools/
-    └── gen_partition.c
 ```
 
-当前仓库还没有完全迁移到该结构。现阶段的 `Boot/`、`partition/`、`generated/` 和 `tools/gen_partition.c` 是第一步框架。
+当前仓库还没有完全迁移到该结构。现阶段的 `Boot/` 和 `platform/<platform>/inc/partition_config.h` 是第一步框架。
 
 ## 2. Layer Responsibilities
 
@@ -247,7 +234,6 @@ mk/platform.mk
 ```make
 PLATFORM ?= stm32f103xe
 PLATFORM_DIR := platform/$(PLATFORM)
-GENERATED_DIR := generated/$(PLATFORM)
 
 include $(PLATFORM_DIR)/platform.mk
 ```
@@ -281,17 +267,15 @@ C_DEFS += \
 
 C_INCLUDES += \
 -Iplatform/stm32f103xe/inc \
--I$(GENERATED_DIR) \
 -IDrivers/CMSIS/Device/ST/STM32F1xx/Include \
 -IDrivers/CMSIS/Include
 
 PLATFORM_SOURCES += \
 platform/stm32f103xe/src/boot_platform.c \
+platform/stm32f103xe/src/partition_config.c \
 platform/stm32f103xe/src/flash_driver.c \
 platform/stm32f103xe/src/reset_jump.c \
 platform/stm32f103xe/src/platform_crc.c
-
-PARTITION_INPUT := platform/stm32f103xe/partition.yaml
 ```
 
 切换平台：
@@ -307,12 +291,12 @@ make PLATFORM=<new_platform>
 bash build.sh PLATFORM=<new_platform>
 ```
 
-## 5. Partition Generation
+## 5. Partition Map
 
-分区配置应该随平台走：
+分区配置应该随平台走，用纯 C 头文件描述：
 
 ```text
-platform/<platform_name>/partition.yaml
+platform/<platform_name>/inc/partition_config.h
 ```
 
 原因：
@@ -322,79 +306,35 @@ platform/<platform_name>/partition.yaml
 - erase size 依赖芯片。
 - 写入对齐依赖芯片。
 - Bootloader/App 分区大小也常随芯片 Flash 容量调整。
+- 固件、Bootloader fallback 表和后续链接脚本都应引用同一份宏，避免 YAML 再生成一层。
 
-`partition.yaml` 应只维护：
+头文件只维护：
 
-- Flash 基础信息
-- 固定入口区
-- 自动布局起点
-- 分区顺序和大小
+- 从 `platform_config.h` 继承 Flash 基础信息
+- Stage0 固定入口
+- 后续分区的大小；地址由上一个分区的 END 宏顺延
+- `_Static_assert` 检查擦除对齐、连续、不越界
 
 示例：
 
-```yaml
-flash:
-  base: 0x08000000
-  size: 512K
-  erase_size: 2K
+```c
+#define PARTITION_STAGE0_ADDR        PARTITION_FLASH_BASE_ADDR
+#define PARTITION_STAGE0_SIZE        PARTITION_KB(16)
+#define PARTITION_STAGE0_END_ADDR    (PARTITION_STAGE0_ADDR + PARTITION_STAGE0_SIZE)
 
-fixed:
-  - name: stage0
-    type: stage0
-    address: 0x08000000
-    size: 16K
-
-auto_layout:
-  start_after: stage0
-  align: erase_size
-
-layout:
-  - name: partition_table_0
-    type: partition_table
-    size: 4K
-  - name: partition_table_1
-    type: partition_table
-    size: 4K
-  - name: bootctrl_0
-    type: boot_control
-    size: 4K
-  - name: bootctrl_1
-    type: boot_control
-    size: 4K
-  - name: boot_a
-    type: bootloader
-    size: 48K
-  - name: boot_b
-    type: bootloader
-    size: 48K
-  - name: app_a
-    type: app
-    size: 160K
-  - name: app_b
-    type: app
-    size: 160K
-  - name: config
-    type: config
-    size: 64K
+#define PARTITION_PARTITION_TABLE_0_ADDR     PARTITION_STAGE0_END_ADDR
+#define PARTITION_PARTITION_TABLE_0_SIZE     PARTITION_KB(4)
+#define PARTITION_PARTITION_TABLE_0_END_ADDR (PARTITION_PARTITION_TABLE_0_ADDR + \
+                                              PARTITION_PARTITION_TABLE_0_SIZE)
 ```
 
-生成输出：
+链接脚本仍需要手写 ORIGIN/LENGTH，数字必须和这些宏一致。后续如果要自动生成 `.ld`，host 工具应 `#include` 这份 C 头，而不是再维护 YAML。
 
-```text
-generated/<platform_name>/partition_config.h
-generated/<platform_name>/partition_layout.md
-generated/<platform_name>/stage0.ld
-generated/<platform_name>/boot_a.ld
-generated/<platform_name>/boot_b.ld
-generated/<platform_name>/app_a.ld
-generated/<platform_name>/app_b.ld
-```
-
-当前 `tools/gen_partition.c` 已经能生成 `partition_config.h` 和 `partition_layout.md`。后续应继续扩展 linker script 生成。
+运行期 Flash 里的 PartitionTable 仍是 `boot_partition_table_t` 双备份。两份都无效时，Bootloader 用这份编译期地图构造 fallback 表。
 
 ### 5.1 STM32F103xE Example Flash Map
 
-当前 `platform/stm32f103xe/partition.yaml` 对应的 512KB Flash 分区示意图如下：
+当前 `platform/stm32f103xe/inc/partition_config.h` 对应的 512KB Flash 分区示意图如下：
 
 ```text
 Flash: 0x08000000 - 0x08080000, 512KB
@@ -630,82 +570,23 @@ reset
 
 ## 10. Migration Plan From Current Repository
 
-建议按以下顺序迁移，避免一次性改动过大。
+平台目录、`boot_platform.h`、STM32 适配和纯 C Flash 地图已经落地。后续按这个顺序补齐，避免一次性改动过大。
 
-### Step 1: Introduce Platform Directory
+### Step 1: Independent Linker Scripts
 
-新增：
-
-```text
-platform/stm32f103xe/
-```
-
-移动：
+为每个 slot 准备链接脚本，ORIGIN/LENGTH 必须与 `partition_config.h` 宏一致：
 
 ```text
-partition/partition.yaml
+platform/<platform>/linker/stage0.ld
+platform/<platform>/linker/boot_a.ld
+platform/<platform>/linker/boot_b.ld
+platform/<platform>/linker/app_a.ld
+platform/<platform>/linker/app_b.ld
 ```
 
-到：
+如果要自动生成 `.ld`，host 工具应 `#include` 这份 C 头，不要再引入 YAML。
 
-```text
-platform/stm32f103xe/partition.yaml
-```
-
-### Step 2: Add mk/platform.mk
-
-新增平台选择变量：
-
-```make
-PLATFORM ?= stm32f103xe
-PLATFORM_DIR := platform/$(PLATFORM)
-GENERATED_DIR := generated/$(PLATFORM)
-```
-
-### Step 3: Move Partition Output
-
-把生成输出从：
-
-```text
-generated/
-```
-
-改成：
-
-```text
-generated/$(PLATFORM)/
-```
-
-### Step 4: Add boot_platform.h
-
-新增平台抽象接口，但先不强制所有代码使用。
-
-### Step 5: Implement STM32 Platform Adapter
-
-新增：
-
-```text
-platform/stm32f103xe/src/boot_platform.c
-```
-
-先实现：
-
-- flash info
-- reset
-- jump stub
-- crc stub
-
-### Step 6: Generate Linker Scripts
-
-扩展 `tools/gen_partition.c`：
-
-- 生成 `stage0.ld`
-- 生成 `boot_a.ld`
-- 生成 `boot_b.ld`
-- 生成 `app_a.ld`
-- 生成 `app_b.ld`
-
-### Step 7: Split Build Targets
+### Step 2: Split Build Targets
 
 新增目标：
 
@@ -717,7 +598,19 @@ app_a
 app_b
 ```
 
-### Step 8: Move App Config Logic Behind config_store
+### Step 3: Program PartitionTable Binary
+
+把 `boot_partition_table_t` 写入 PartitionTable_0/1。Bootloader fallback 表只作为两份 Flash 表都无效时的兜底。
+
+### Step 4: Complete Image and Control CRC
+
+实现：
+
+- `boot_partition_table_is_valid()` CRC
+- `boot_control_is_valid()` CRC
+- `boot_image_header_is_valid()` image CRC
+
+### Step 5: Move App Config Logic Behind config_store
 
 业务代码不再直接操作 Flash 地址。
 
@@ -725,11 +618,11 @@ app_b
 
 新增芯片时只做这些事：
 
-1. 新增 `platform/<chip>/partition.yaml`
-2. 新增 `platform/<chip>/platform.mk`
-3. 新增 `platform/<chip>/inc/platform_config.h`
+1. 新增 `platform/<chip>/inc/platform_config.h`
+2. 新增 `platform/<chip>/inc/partition_config.h`
+3. 新增 `platform/<chip>/platform.mk`
 4. 新增 `platform/<chip>/src/boot_platform.c`
-5. 新增或复用 linker 模板
+5. 新增或复用 linker 脚本，地址与 `partition_config.h` 一致
 6. 调整 `Drivers/` 或芯片 SDK include/source
 7. 执行：
 
@@ -755,22 +648,17 @@ make PLATFORM=<chip>
 - 分区表结构
 - BootControl 结构
 - 镜像头结构
-- C 语言分区生成器
-- 自动生成 `partition_config.h`
-- 默认编译自动刷新分区文件
+- `boot_platform.h` 和 STM32F103xE 适配
+- 纯 C Flash 地图 `platform/<platform>/inc/partition_config.h`
 
 当前缺失：
 
-- `boot_platform.h`
-- `platform/stm32f103xe/`
-- 分平台生成目录
-- linker script 自动生成
+- slot 独立 linker script
 - Stage0 独立构建目标
 - Bootloader 独立构建目标
 - App A/B 独立链接
-- Flash 写入平台适配
-- 真正的 CRC 校验
-- BootControl Flash 持久化
+- 真实 PartitionTable 二进制烧录
+- 镜像/分区表/BootControl 的完整 CRC 校验
 - App `config_store`
 
 这些缺口建议按迁移计划逐步补齐。

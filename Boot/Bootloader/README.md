@@ -1,26 +1,37 @@
 # Bootloader
 
-Bootloader 由 Stage0 启动，支持 A/B 主备分区。
+最小串口 Bootloader，放在 Bootloader_A（`0x08008000`）。复位后由 Stage0 跳过来。
 
-主要职责：
+## 构建
 
-- 根据分区表定位 App_A/B
-- 根据 BootControl 对 App_A/B 做三次失败回退
-- 支持升级 App 分区
-- 支持升级 Bootloader 备用分区
-- 支持升级 Partition Table
-- 提供最小 CLI，例如 `show`、`upgrade`、`confirm`、`rollback`
-
-Bootloader 自己启动成功后，需要确认：
-
-```c
-boot_confirm_bootloader();
+```sh
+./build.sh boot      # Stage0 + boot_a + build/boot_combined.bin
+./build.sh app_a     # App 链到 App_A，供 load/jump 使用
 ```
 
-App 启动成功后，也需要确认：
+烧录 `build/boot_combined.bin` 到 `0x08000000`。
 
-```c
-boot_confirm_app();
+USART1（PA9 TX / PA10 RX），115200 8N1。
+
+## 命令
+
+上电打印地图，等待 3 秒：有按键则留下，否则若 App_A 向量有效就跳转。
+
+| 命令 | 作用 |
+| --- | --- |
+| `help` | 命令列表 |
+| `info` | 分区地址和 App 是否有效 |
+| `erase` | 擦除 App_A |
+| `load` | XMODEM-CRC 接收 `.bin` 写到 App_A |
+
+XMODEM 实现：`Boot/Bootloader/Src/bootloader_xmodem.c`。
+| `jump` | 跳到 App_A |
+| `reboot` | 复位 |
+
+发送固件示例：
+
+```sh
+sx --xmodem build/app_a/app_a.bin < /dev/ttyUSB0 > /dev/ttyUSB0
 ```
 
-未确认的 pending 镜像连续启动三次失败后，会自动回退到另一个可用分区。
+必须使用 `./build.sh app_a` 编出来的镜像。当前默认 App 链在 `0x08000000`，不能直接 `load` 后跳转。

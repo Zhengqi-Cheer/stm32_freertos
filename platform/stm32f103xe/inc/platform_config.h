@@ -13,5 +13,7 @@
 #define PLATFORM_FLASH_SIZE         (512u * 1024u)
 #define PLATFORM_FLASH_ERASE_SIZE   (2u * 1024u)
 #define PLATFORM_FLASH_WRITE_ALIGN  2u
+#define PLATFORM_SRAM_BASE_ADDR     0x20000000u
+#define PLATFORM_SRAM_SIZE          (64u * 1024u)
 
 #endif /* PLATFORM_CONFIG_H */

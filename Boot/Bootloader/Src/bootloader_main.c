@@ -157,9 +157,8 @@ static const boot_partition_table_t *bootloader_load_partition_table(void)
 
     /*
      * Early development fallback:
-     * The partition generator currently emits C macros, not a programmed
-     * PartitionTable binary. Until table flashing is implemented, use a table
-     * built from generated addresses.
+     * PartitionTable is not yet programmed into Flash. Until table flashing
+     * exists, use the compile-time map from partition_config.h.
      */
     if (active == NULL) {
         active = &g_fallback_partition_table;

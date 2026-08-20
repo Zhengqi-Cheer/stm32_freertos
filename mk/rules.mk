@@ -17,12 +17,7 @@ LDFLAGS := $(MCU) -specs=nano.specs -T$(LDSCRIPT) $(LIBDIR) $(LIBS) -Wl,-Map=$(B
 #######################################
 # build the application
 #######################################
-PARTITION_TOOL := $(BUILD_DIR)/gen_partition
-PARTITION_INPUT ?= $(PLATFORM_DIR)/partition.yaml
-PARTITION_OUTPUTS := $(GENERATED_DIR)/partition_config.h $(GENERATED_DIR)/partition_layout.md
-PARTITION_STAMP := $(BUILD_DIR)/partition.stamp
-
-all: $(PARTITION_STAMP) $(BUILD_DIR)/$(TARGET).elf $(BUILD_DIR)/$(TARGET).hex $(BUILD_DIR)/$(TARGET).bin
+all: $(BUILD_DIR)/$(TARGET).elf $(BUILD_DIR)/$(TARGET).hex $(BUILD_DIR)/$(TARGET).bin
 
 OBJECTS := $(addprefix $(BUILD_DIR)/,$(notdir $(C_SOURCES:.c=.o)))
 vpath %.c $(sort $(dir $(C_SOURCES)))
@@ -55,28 +50,19 @@ $(BUILD_DIR)/%.bin: $(BUILD_DIR)/%.elf | $(BUILD_DIR)
 	$(BIN) $< $@
 
 $(BUILD_DIR):
-	mkdir $@
+	mkdir -p $@
 
 #######################################
 # helpers
 #######################################
-.PHONY: all clean list-modules partition
+.PHONY: all clean list-modules
 
 clean:
 	-rm -fR $(BUILD_DIR)
 
-$(PARTITION_TOOL): tools/gen_partition.c | $(BUILD_DIR)
-	$(HOSTCC) -std=c99 -Wall -Wextra -Werror $< -o $@
-
-$(PARTITION_STAMP): $(PARTITION_INPUT) $(PARTITION_TOOL)
-	$(PARTITION_TOOL) $(PARTITION_INPUT) $(GENERATED_DIR)
-	touch $@
-
-$(PARTITION_OUTPUTS): $(PARTITION_STAMP)
-
-partition: $(PARTITION_STAMP)
-
 list-modules:
+	@echo "TARGET_IMAGE=$(TARGET_IMAGE)"
+	@echo "TARGET=$(TARGET)"
 	@echo "PLATFORM=$(PLATFORM)"
 	@echo "ENABLE_CORE_APP=$(ENABLE_CORE_APP)"
 	@echo "ENABLE_CORE_LED=$(ENABLE_CORE_LED)"
@@ -85,6 +71,8 @@ list-modules:
 	@echo "ENABLE_EMBEDDED_CLI=$(ENABLE_EMBEDDED_CLI)"
 	@echo "ENABLE_STM32_HAL=$(ENABLE_STM32_HAL)"
 	@echo "ENABLE_FREERTOS=$(ENABLE_FREERTOS)"
+	@echo "ENABLE_BOOTLOADER=$(ENABLE_BOOTLOADER)"
+	@echo "ENABLE_STAGE0=$(ENABLE_STAGE0)"
 
 #######################################
 # dependencies

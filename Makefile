@@ -10,16 +10,18 @@
 # ------------------------------------------------
 
 ROOT := $(shell pwd)
-TARGET := STM32-freertos
-BUILD_DIR := build
 
 include mk/config.mk
+include mk/image.mk
 include mk/common.mk
 include mk/platform.mk
 
 include Core/module.mk
 include Drivers/module.mk
 include Middlewares/module.mk
+include Boot/Common/module.mk
+include Boot/Stage0/module.mk
+include Boot/Bootloader/module.mk
 
 include mk/rules.mk
 
